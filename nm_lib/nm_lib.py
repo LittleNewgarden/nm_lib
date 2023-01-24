@@ -18,20 +18,22 @@ import matplotlib.pyplot as plt
 def deriv_dnw(xx, hh, **kwargs):
     """
     Returns the downwind 2nd order derivative of hh array respect to xx array. 
-
     Parameters 
     ----------
     xx : `array`
         Spatial axis. 
     hh : `array`
         Function that depends on xx. 
-
     Returns
     -------
     `array`
         The downwind 2nd order derivative of hh respect to xx. Last 
         grid point is ill (or missing) calculated. 
     """
+    #u_plus = (-hh[2:] + 4*hh[1:-1] - 3*hh[:-2])/(2*np.abs(xx[0]-xx[1]))
+    u_dev = (hh[1:] - hh[:-1])/(xx[1:]- xx[:-1])
+
+    return u_dev
 
 
 def order_conv(hh, hh2, hh4, **kwargs):
