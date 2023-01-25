@@ -31,7 +31,7 @@ def deriv_dnw(xx, hh, **kwargs):
         grid point is ill (or missing) calculated. 
     """
     #u_plus = (-hh[2:] + 4*hh[1:-1] - 3*hh[:-2])/(2*np.abs(xx[0]-xx[1]))
-    u_dev = (hh[1:] - hh[:-1])/(xx[1:]- xx[:-1])
+    u_dev = (hh[:-1] - hh[1:])/(xx[:-1]- xx[1:])
 
     return u_dev
 
@@ -75,8 +75,8 @@ def deriv_4tho(xx, hh, **kwargs):
    
 
 def step_adv_burgers(xx, hh, a, cfl_cut = 0.98, 
-                    ddx = lambda x,y: deriv_dnw(x, y), **kwargs): 
-    r"""
+                    ddx = lambda x,y: deriv_dnw(xx, hh), **kwargs): 
+    """
     Right hand side of Burger's eq. where a can be a constant or a function that 
     depends on xx. 
 
@@ -105,6 +105,10 @@ def step_adv_burgers(xx, hh, a, cfl_cut = 0.98,
         Time interval.
         Right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x} 
     """    
+    dt = cfl_cut*cfl_adv_burger(a,xx)
+    rhs = -a*deriv_dnw(xx,hh)
+    return dt, rhs
+    
 
 
 def cfl_adv_burger(a,x): 
@@ -124,6 +128,8 @@ def cfl_adv_burger(a,x):
     `float`
         min(dx/|a|)
     """
+    dx = x[1:]- x[:-1]
+    return np.min(dx/np.abs(a))
 
 
 def evolv_adv_burgers(xx, hh, nt, a, cfl_cut = 0.98, 
@@ -183,6 +189,8 @@ def deriv_upw(xx, hh, **kwargs):
         The upwind 2nd order derivative of hh respect to xx. First 
         grid point is ill calculated. 
     """
+    u_dev = (hh[1:] - hh[:-1])/(xx[1:]- xx[:-1])
+    return u_dev
     
 
 def deriv_cent(xx, hh, **kwargs):
