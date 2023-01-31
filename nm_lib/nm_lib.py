@@ -30,7 +30,9 @@ def deriv_dnw(xx, hh, **kwargs):
         The downwind 2nd order derivative of hh respect to xx. Last 
         grid point is ill (or missing) calculated. 
     """
-    #u_plus = (-hh[2:] + 4*hh[1:-1] - 3*hh[:-2])/(2*np.abs(xx[0]-xx[1]))
+    # if kwargs["roll"] == True:
+    #     u_dev = (hh - np.roll(hh,-1))/(xx- np.roll(xx,-1))
+    # else: 
     u_dev = (hh[:-1] - hh[1:])/(xx[:-1]- xx[1:])
 
     return u_dev
@@ -72,10 +74,11 @@ def deriv_4tho(xx, hh, **kwargs):
         The centered 4th order derivative of hh respect to xx. 
         Last and first two grid points are ill calculated. 
     """
+    return (hh[:-4] - 8*hh[1:-3] + 8*hh[3:-1] - hh[4:])/(12*(xx[1] - xx[0]))
    
 
 def step_adv_burgers(xx, hh, a, cfl_cut = 0.98, 
-                    ddx = lambda x,y: deriv_dnw(xx, hh), **kwargs): 
+                    ddx = lambda x,y: deriv_dnw(x, y, roll=True), **kwargs): 
     """
     Right hand side of Burger's eq. where a can be a constant or a function that 
     depends on xx. 
@@ -106,7 +109,8 @@ def step_adv_burgers(xx, hh, a, cfl_cut = 0.98,
         Right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x} 
     """    
     dt = cfl_cut*cfl_adv_burger(a,xx)
-    rhs = -a*deriv_dnw(xx,hh)
+    #rhs = -a*deriv_dnw(xx,hh, roll=True)
+    rhs = -a*ddx(xx,hh)
     return dt, rhs
     
 
@@ -129,6 +133,7 @@ def cfl_adv_burger(a,x):
         min(dx/|a|)
     """
     dx = x[1:]- x[:-1]
+    dx = np.pad(dx, [0,1], "wrap")
     return np.min(dx/np.abs(a))
 
 
@@ -170,6 +175,22 @@ def evolv_adv_burgers(xx, hh, nt, a, cfl_cut = 0.98,
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain. 
     """
+    t = np.zeros(nt)
+    un = np.zeros((len(xx), nt))
+
+    un[:,0] = hh
+    d = len(un)
+
+    for i in range(nt-1):
+        dt, rhs = step_adv_burgers(xx, hh, a, cfl_cut = cfl_cut ,ddx = ddx)
+        un[bnd_limits[0]:d- bnd_limits[1],i+1] = hh[bnd_limits[0]:d- bnd_limits[1]] + rhs*dt        
+
+        t[i+1] = t[i]+dt
+        un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        hh = un[:,i+1]
+        
+    return t, un
+    
 
 
 def deriv_upw(xx, hh, **kwargs):
@@ -190,6 +211,7 @@ def deriv_upw(xx, hh, **kwargs):
         grid point is ill calculated. 
     """
     u_dev = (hh[1:] - hh[:-1])/(xx[1:]- xx[:-1])
+
     return u_dev
     
 
@@ -210,6 +232,11 @@ def deriv_cent(xx, hh, **kwargs):
         The centered 2nd order derivative of hh respect to xx. First 
         and last grid points are ill calculated. 
     """
+    dx = xx[2:] - xx[:-2]
+    return (hh[2:] - hh[:-2])/(2*dx)
+
+
+
 
 
 def evolv_uadv_burgers(xx, hh, nt, cfl_cut = 0.98, 
@@ -288,6 +315,22 @@ def evolv_Lax_uadv_burgers(xx, hh, nt, cfl_cut = 0.98,
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain. 
     """
+    t = np.zeros(nt)
+    un = np.zeros((len(xx), nt))
+
+    un[:,0] = hh
+    d = len(un)
+
+    for i in range(nt-1):
+        dt, rhs = step_uadv_burgers(xx, hh, cfl_cut = cfl_cut ,ddx = ddx)
+        un[bnd_limits[0]:d- bnd_limits[1],i+1] = 0.5*(hh[2:] + hh[:-2]) + rhs*dt
+        t[i+1] = t[i]+dt
+        un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        hh = un[:,i+1]
+
+    return t, un
+
+
 
 
 def evolv_Lax_adv_burgers(xx, hh, nt, a, cfl_cut = 0.98, 
@@ -334,8 +377,10 @@ def evolv_Lax_adv_burgers(xx, hh, nt, a, cfl_cut = 0.98,
     """
 
 
+
+
 def step_uadv_burgers(xx, hh, cfl_cut = 0.98, 
-                    ddx = lambda x,y: deriv_dnw(x, y), **kwargs): 
+                    ddx = lambda x,y: deriv_cent(x, y), bnd_limits=[1,1],**kwargs): 
     r"""
     Right hand side of Burger's eq. where a is u, i.e hh.  
 
@@ -364,6 +409,12 @@ def step_uadv_burgers(xx, hh, cfl_cut = 0.98,
     unnt : `array`
         right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x} 
     """       
+    d = len(hh)
+    dt = cfl_cut*cfl_adv_burger(hh,xx)
+    rhs = -hh[bnd_limits[0]:d- bnd_limits[1]]*ddx(xx,hh)
+    return dt, rhs
+
+
 
 
 def cfl_diff_burger(a,x): 
