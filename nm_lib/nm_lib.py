@@ -33,7 +33,11 @@ def deriv_dnw(xx, hh, **kwargs):
     # if kwargs["roll"] == True:
     #     u_dev = (hh - np.roll(hh,-1))/(xx- np.roll(xx,-1))
     # else: 
-    u_dev = (hh[:-1] - hh[1:])/(xx[:-1]- xx[1:])
+
+    #old:
+    # u_dev = (hh[:-1] - hh[1:])/(xx[:-1]- xx[1:])
+
+    u_dev = (hh[1:] - hh[:-1])/(xx[1:] - xx[:-1])
 
     return u_dev
 
@@ -210,7 +214,10 @@ def deriv_upw(xx, hh, **kwargs):
         The upwind 2nd order derivative of hh respect to xx. First 
         grid point is ill calculated. 
     """
-    u_dev = (hh[1:] - hh[:-1])/(xx[1:]- xx[:-1])
+    #old:
+    # u_dev = (hh[1:] - hh[:-1])/(xx[1:]- xx[:-1])
+
+    u_dev = (hh[:-1] - hh[1:])/(xx[:-1]- xx[1:])
 
     return u_dev
     
@@ -276,6 +283,23 @@ def evolv_uadv_burgers(xx, hh, nt, cfl_cut = 0.98,
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain. 
     """
+    t = np.zeros(nt)
+    un = np.zeros((len(xx), nt))
+
+    un[:,0] = hh
+    d = len(un)
+
+    for i in range(nt-1):
+        dt, rhs = step_uadv_burgers(xx, hh, cfl_cut = cfl_cut ,ddx = ddx, bnd_limits=bnd_limits)
+        un[bnd_limits[0]:d- bnd_limits[1],i+1] = hh[bnd_limits[0]:d- bnd_limits[1]] + rhs*dt        
+
+        t[i+1] = t[i]+dt
+        un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        hh = un[:,i+1]
+        
+    return t, un
+
+
 
 
 def evolv_Lax_uadv_burgers(xx, hh, nt, cfl_cut = 0.98, 
