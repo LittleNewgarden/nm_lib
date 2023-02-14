@@ -34,10 +34,17 @@ def deriv_dnw(xx, hh, **kwargs):
     #     u_dev = (hh - np.roll(hh,-1))/(xx- np.roll(xx,-1))
     # else: 
 
-    #old:
+    #old: used for exercises 1-3
     # u_dev = (hh[:-1] - hh[1:])/(xx[:-1]- xx[1:])
 
-    u_dev = (hh[1:] - hh[:-1])/(xx[1:] - xx[:-1])
+
+    #New: used for exercise 4a
+    #u_dev = (hh[1:] - hh[:-1])/(xx[1:] - xx[:-1])  #(xx[1:] - xx[:-1])
+
+    #Roll: to fix problems in exercise 4
+    u_dev = (np.roll(hh,-1) - hh)/(np.roll(xx,-1) - xx)
+
+
 
     return u_dev
 
@@ -78,7 +85,13 @@ def deriv_4tho(xx, hh, **kwargs):
         The centered 4th order derivative of hh respect to xx. 
         Last and first two grid points are ill calculated. 
     """
-    return (hh[:-4] - 8*hh[1:-3] + 8*hh[3:-1] - hh[4:])/(12*(xx[1] - xx[0]))
+    #old
+    u_dev = (hh[:-4] - 8*hh[1:-3] + 8*hh[3:-1] - hh[4:])/(12*(xx[1] - xx[0]))
+
+    #new: 
+    # u_dev = (np.roll(hh, 2) - 8*np.roll(hh,1) + 8*np.roll(hh,-1) + np.roll(hh,-2))/(12*(xx[1] - xx[0]))
+    return u_dev
+
    
 
 def step_adv_burgers(xx, hh, a, cfl_cut = 0.98, 
@@ -136,8 +149,9 @@ def cfl_adv_burger(a,x):
     `float`
         min(dx/|a|)
     """
-    dx = x[1:]- x[:-1]
-    dx = np.pad(dx, [0,1], "wrap")
+    # dx = x[1:]- x[:-1]
+    # dx = np.pad(dx, [0,1], "wrap")
+    dx = x[1] - x[0]
     return np.min(dx/np.abs(a))
 
 
@@ -186,9 +200,15 @@ def evolv_adv_burgers(xx, hh, nt, a, cfl_cut = 0.98,
     d = len(un)
 
     for i in range(nt-1):
-        dt, rhs = step_adv_burgers(xx, hh, a, cfl_cut = cfl_cut ,ddx = ddx)
-        un[bnd_limits[0]:d- bnd_limits[1],i+1] = hh[bnd_limits[0]:d- bnd_limits[1]] + rhs*dt        
+        # dt, rhs = step_adv_burgers(xx, hh, a, cfl_cut = cfl_cut ,ddx = ddx)
+        # un[bnd_limits[0]:d- bnd_limits[1],i+1] = hh[bnd_limits[0]:d- bnd_limits[1]] + rhs*dt        
 
+        # t[i+1] = t[i]+dt
+        # un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        # hh = un[:,i+1]
+
+        dt, rhs = step_adv_burgers(xx, hh, a, cfl_cut = cfl_cut ,ddx = ddx) #bnd_limits=bnd_limits
+        un[:,i+1] = hh + rhs*dt
         t[i+1] = t[i]+dt
         un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
         hh = un[:,i+1]
@@ -217,7 +237,12 @@ def deriv_upw(xx, hh, **kwargs):
     #old:
     # u_dev = (hh[1:] - hh[:-1])/(xx[1:]- xx[:-1])
 
-    u_dev = (hh[:-1] - hh[1:])/(xx[:-1]- xx[1:])
+    #New: used for 4a
+    # u_dev = (hh[:-1] - hh[1:])/(xx[:-1]- xx[1:])
+
+    #Roll: used for fixing 4a
+    u_dev = (hh - np.roll(hh,1))/(xx-np.roll(xx,1))
+    
 
     return u_dev
     
@@ -239,8 +264,14 @@ def deriv_cent(xx, hh, **kwargs):
         The centered 2nd order derivative of hh respect to xx. First 
         and last grid points are ill calculated. 
     """
-    dx = xx[2:] - xx[:-2]
-    return (hh[2:] - hh[:-2])/(2*dx)
+    # dx = xx[2:] - xx[:-2]
+
+    # u_dev = (hh[2:] - hh[:-2])/(2*dx)
+
+    #Roll:
+    u_dev = (np.roll(hh,-1) - np.roll(hh,1))/(np.roll(xx,-1) - np.roll(xx, 1))
+
+    return u_dev
 
 
 
@@ -290,12 +321,21 @@ def evolv_uadv_burgers(xx, hh, nt, cfl_cut = 0.98,
     d = len(un)
 
     for i in range(nt-1):
-        dt, rhs = step_uadv_burgers(xx, hh, cfl_cut = cfl_cut ,ddx = ddx, bnd_limits=bnd_limits)
-        un[bnd_limits[0]:d- bnd_limits[1],i+1] = hh[bnd_limits[0]:d- bnd_limits[1]] + rhs*dt        
+        # dt, rhs = step_uadv_burgers(xx, hh, cfl_cut = cfl_cut ,ddx = ddx, bnd_limits=bnd_limits)
+        # un[bnd_limits[0]:d- bnd_limits[1],i+1] = hh[bnd_limits[0]:d- bnd_limits[1]] + rhs*dt        
 
+        # t[i+1] = t[i]+dt
+        # un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        # hh = un[:,i+1]
+
+        dt, rhs = step_uadv_burgers(xx, hh, cfl_cut = cfl_cut ,ddx = ddx) #bnd_limits=bnd_limits
+        un[:,i+1] = hh + rhs*dt
         t[i+1] = t[i]+dt
         un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
         hh = un[:,i+1]
+
+
+
         
     return t, un
 
@@ -345,12 +385,22 @@ def evolv_Lax_uadv_burgers(xx, hh, nt, cfl_cut = 0.98,
     un[:,0] = hh
     d = len(un)
 
-    for i in range(nt-1):
+    # for i in range(nt-1):
+    #     dt, rhs = step_uadv_burgers(xx, hh, cfl_cut = cfl_cut ,ddx = ddx)
+    #     un[bnd_limits[0]:d- bnd_limits[1],i+1] = 0.5*(hh[2:] + hh[:-2]) + rhs*dt
+    #     t[i+1] = t[i]+dt
+    #     un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+    #     hh = un[:,i+1]
+
+
+    for i in range(nt-1): 
         dt, rhs = step_uadv_burgers(xx, hh, cfl_cut = cfl_cut ,ddx = ddx)
-        un[bnd_limits[0]:d- bnd_limits[1],i+1] = 0.5*(hh[2:] + hh[:-2]) + rhs*dt
+        un[:,i+1] = 0.5*(np.roll(hh,-1) +  np.roll(hh,1)) + rhs*dt
         t[i+1] = t[i]+dt
         un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
         hh = un[:,i+1]
+
+
 
     return t, un
 
@@ -435,7 +485,12 @@ def step_uadv_burgers(xx, hh, cfl_cut = 0.98,
     """       
     d = len(hh)
     dt = cfl_cut*cfl_adv_burger(hh,xx)
-    rhs = -hh[bnd_limits[0]:d- bnd_limits[1]]*ddx(xx,hh)
+    #New: used for wrong 4a:
+    # if ddx == deriv_upw:
+    #     rhs = -hh[bnd_limits[0]:d- bnd_limits[1]]*ddx(xx,hh)
+    # else:
+    rhs = -hh*ddx(xx,hh)
+
     return dt, rhs
 
 
@@ -683,6 +738,11 @@ def step_diff_burgers(xx, hh, a, ddx = lambda x,y: deriv_cent(x, y), **kwargs):
         Right hand side of (u^{n+1}-u^{n})/dt = from burgers eq, i.e., x \frac{\partial u}{\partial x} 
     """    
 
+    rhs = a*ddx(xx,hh)
+    return rhs
+
+
+
 
 def NR_f(xx, un, uo, a, dt, **kwargs): 
     r"""
@@ -706,6 +766,8 @@ def NR_f(xx, un, uo, a, dt, **kwargs):
     `array`
         function  u^{n+1}_{j}-u^{n}_{j} - a (u^{n+1}_{j+1} - 2 u^{n+1}_{j} -u^{n+1}_{j-1}) dt
     """    
+
+    
 
 
 def jacobian(xx, un, a, dt, **kwargs): 
@@ -947,6 +1009,8 @@ def Newton_Raphson_u(xx, hh, dt, nt, toll= 1e-5, ncount=2,
         
     return t, unnt, errt, countt
 
+
+
 def taui_sts(nu, niter, iiter): 
     """
     STS parabolic scheme. [(nu -1)cos(pi (2 iiter - 1) / 2 niter) + nu + 1]^{-1}
@@ -965,6 +1029,14 @@ def taui_sts(nu, niter, iiter):
     `float` 
         [(nu -1)cos(pi (2 iiter - 1) / 2 niter) + nu + 1]^{-1}
     """
+
+    tau = ((nu - 1)*np.cos(np.pi*(2*iiter - 1)/(2*niter)) + nu + 1)**(-1)
+
+    return tau
+    
+
+
+
 
 def evol_sts(xx, hh, nt,  a, cfl_cut = 0.45, 
         ddx = lambda x,y: deriv_cent(x, y), 
@@ -1010,6 +1082,50 @@ def evol_sts(xx, hh, nt,  a, cfl_cut = 0.45,
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain. 
     """
+
+    t = np.zeros(nt)
+    un = np.zeros((len(xx), nt))
+
+    un[:,0] = hh
+    d = len(un)
+
+    dx = xx[1] - xx[0]
+    delta_cfl = cfl_cut*np.min(dx**2/(2*np.abs(a)))
+
+    
+
+    for i in range(nt-1): 
+
+        taui_sum = 0
+
+        rhs = a*ddx(xx,hh)
+
+        for j in range(n_sts): 
+
+            # taui = delta_cfl*taui_sts(nu, n_sts, j)
+            # dt += taui
+            taui_sum += taui_sts(nu, n_sts, j)
+
+        dt = taui_sum*delta_cfl
+
+        un[:,i+1] = hh + rhs*dt
+
+        t[i+1] = t[i]+dt
+        un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        hh = un[:,i+1]
+
+    return t, un
+
+
+
+
+
+
+
+
+
+
+
 
 
 def hyman(xx, f, dth, a, fold=None, dtold=None,
