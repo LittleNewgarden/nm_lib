@@ -12,7 +12,7 @@ import os
 
 # import external public "common" modules
 import numpy as np
-import matplotlib.pyplot as plt 
+# import matplotlib.pyplot as plt 
 
 
 def deriv_dnw(xx, hh, **kwargs):

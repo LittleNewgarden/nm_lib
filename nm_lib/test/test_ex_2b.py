@@ -1,7 +1,6 @@
 def test_ex_2b():
 
     import numpy as np 
-    import matplotlib.pyplot as plt 
     from nm_lib import nm_lib as nm
 
 
