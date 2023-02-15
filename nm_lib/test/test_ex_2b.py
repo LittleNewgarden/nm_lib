@@ -84,7 +84,7 @@ def test_ex_2b():
     nt = 400
     a = -1
 
-    t, un = nm.evolv_adv_burgers(x , u0 , nt ,a, ddx=nm.deriv_upw, bnd_limits=[0,1])
+    t, un = nm.evolv_adv_burgers(x , u0 , nt ,a, ddx=nm.deriv_dnw, bnd_limits=[0,1])
 
     A = analytical(x, nt, a, t)
 
