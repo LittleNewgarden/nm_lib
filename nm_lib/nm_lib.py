@@ -515,9 +515,77 @@ def cfl_diff_burger(a,x):
     """
 
 
+def evolv_Rie_uadv_burgers(xx, uu, numps, nt, cfl_cut=0.98,bnd_type='wrap', bnd_limits=[1,0], **kwargs):
+
+    r"""
+    Advance nt time-steps in time the burger eq using Riemann solver. 
+
+    Requires
+    --------
+
+    Parameters
+    ----------
+    xx : `array`
+        Spatial axis. 
+    hh : `array`
+        Function that depends on xx.
+    numps : `int`
+        number of points
+    nt : `int`
+        Number of iterations
+    cfl_cut : `float`
+        Constant value to limit dt from cfl_adv_burger. 
+        By default 0.98
+    bnd_type : `string` 
+        It allows to select the type of boundaries. 
+        By default 'wrap'
+    bnd_limits : `list(int)`
+        Array of two integer elements. The number of pixels that
+        will need to be updated with the boundary information. 
+        By default [0,1]
+
+    Returns
+    -------
+    t : `array`
+        Time 1D array
+    unnt : `array`
+        Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
+        all the elements of the domain. 
+    """
+    
+    dx = xx[1] - xx[0]
+    t = np.zeros(nt)
+    un = np.zeros((len(xx), nt))
+
+    un[:,0] = uu
+    d = len(un)
+
+    for i in range(nt-1):
+
+        u_L = un[:,i]
+        u_R = np.roll(un[:,i],-1)
+
+        F_L = (u_L**2)/2
+        F_R = (u_R**2)/2
+
+        va = np.zeros(numps)
+        for j in range(len(va)): 
+            va[j] = np.max(np.array([np.abs(u_R[j]), np.abs(u_L[j])]))
+
+        dt = cfl_cut*np.min(dx/np.abs(va)) 
+        rhs = ((F_R + F_L)/2 - va/2*(u_R - u_L))/dx
+
+        un[:,i+1] = un[:,i] - dt*(rhs - np.roll(rhs,1))
+        t[i+1] = t[i]+dt
+        un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        u = un[:,i+1]
+
+    return t, un
+
+
 def ops_Lax_LL_Add(xx, hh, nt, a, b, cfl_cut = 0.98, 
-        ddx = lambda x,y: deriv_dnw(x, y), 
-        bnd_type='wrap', bnd_limits=[0,1], **kwargs): 
+        ddx = lambda x,y: deriv_cent(x, y), 
+        bnd_type='wrap', bnd_limits=[1,1], **kwargs): 
     r"""
     Advance nt time-steps in time the burger eq for a being a and b 
     a fix constant or array. Solving two advective terms separately 
@@ -563,6 +631,31 @@ def ops_Lax_LL_Add(xx, hh, nt, a, b, cfl_cut = 0.98,
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain. 
     """
+
+    t = np.zeros(nt)
+    un = np.zeros((len(xx), nt))
+
+    un[:,0] = hh
+    d = len(un)
+
+    for i in range(nt-1): 
+        dt1, rhs1 = step_adv_burgers(xx, hh, a, cfl_cut = cfl_cut ,ddx = ddx)
+        dt2, rhs2 = step_adv_burgers(xx, hh, b, cfl_cut = cfl_cut ,ddx = ddx)
+
+        dt = min(dt1,dt2)
+
+        un1 = 0.5*(np.roll(hh,-1) +  np.roll(hh,1)) + rhs1*dt
+        un2 = 0.5*(np.roll(hh,-1) +  np.roll(hh,1)) + rhs2*dt
+        un[:,i+1] =  un1 + un2 - hh #0.5*(np.roll(hh,-1) +  np.roll(hh,1)) #hh
+        # un[:,i+1] =  rhs1*dt1 + rhs2*dt2 - hh
+        
+        t[i+1] = t[i]+(dt)
+        
+        un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        
+        hh = un[:,i+1]
+
+    return t, un
 
 
 def ops_Lax_LL_Lie(xx, hh, nt, a, b, cfl_cut = 0.98, 
@@ -613,6 +706,36 @@ def ops_Lax_LL_Lie(xx, hh, nt, a, b, cfl_cut = 0.98,
         all the elements of the domain. 
     """
 
+    t = np.zeros(nt)
+    un = np.zeros((len(xx), nt))
+
+    un[:,0] = hh
+    d = len(un)
+
+    for i in range(nt-1): 
+
+        dt1, rhs1 = step_adv_burgers(xx, hh, a, cfl_cut = cfl_cut ,ddx = ddx)
+        dt2, rhs2 = step_adv_burgers(xx, hh, b, cfl_cut = cfl_cut ,ddx = ddx)
+        
+        dt = min(dt1, dt2)
+        
+        un1 = 0.5*(np.roll(hh,-1) +  np.roll(hh,1)) + rhs1*dt
+        un1 = np.pad(un1[bnd_limits[0]:d- bnd_limits[1]], bnd_limits, bnd_type)
+        
+        dt3, rhs3 = step_adv_burgers(xx, un1, b, cfl_cut = cfl_cut ,ddx = ddx)
+        
+        un2 = 0.5*(np.roll(un1,-1) +  np.roll(un1,1)) + rhs3*dt
+        
+
+        un[:,i+1] =  un2
+        
+        t[i+1] = t[i]+(dt)
+
+        un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        hh = un[:,i+1]
+    
+    return t, un
+
 
 def ops_Lax_LL_Strang(xx, hh, nt, a, b, cfl_cut = 0.98, 
         ddx = lambda x,y: deriv_dnw(x, y), 
@@ -662,12 +785,118 @@ def ops_Lax_LL_Strang(xx, hh, nt, a, b, cfl_cut = 0.98,
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain. 
     """
+    t = np.zeros(nt)
+    un = np.zeros((len(xx), nt))
+
+    un[:,0] = hh
+    d = len(un)
+
+    for i in range(nt-1): 
+        dt1, rhs1 = step_adv_burgers(xx, hh, a, cfl_cut = cfl_cut ,ddx = ddx)
+        dt2, rhs2 = step_adv_burgers(xx, hh, b, cfl_cut = cfl_cut ,ddx = ddx)
+        
+        dt = min(dt1, dt2)
+
+        un1 = 0.5*(np.roll(hh,-1) +  np.roll(hh,1)) + rhs1*dt/2
+        un1 = np.pad(un1[bnd_limits[0]:d- bnd_limits[1]], bnd_limits, bnd_type)
+        
+        dt3, rhs3 = step_adv_burgers(xx, un1, b, cfl_cut = cfl_cut ,ddx = ddx)
+        un3 = 0.5*(np.roll(un1,-1) +  np.roll(un1,1)) + rhs3*dt
+        un3 = np.pad(un3[bnd_limits[0]:d- bnd_limits[1]], bnd_limits, bnd_type)
+
+        dt4, rhs4 = step_adv_burgers(xx, un3, a, cfl_cut = cfl_cut ,ddx = ddx)
+        un4= 0.5*(np.roll(un3,-1) +  np.roll(un3,1)) + rhs4*dt/2
+        un4 = np.pad(un4[bnd_limits[0]:d- bnd_limits[1]], bnd_limits, bnd_type)
+
+        un[:,i+1] = un4 
+
+        t[i+1] = t[i]+dt
+        
+        un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        
+        hh = un[:,i+1]
 
 
+    return t, un
 
-def osp_Lax_LH_Strang(xx, hh, nt, a, b, cfl_cut = 0.98, 
+def no_ops(xx, hh, nt, a, b, cfl_cut = 0.98, 
         ddx = lambda x,y: deriv_dnw(x, y), 
-        bnd_type='wrap', bnd_limits=[0,1], **kwargs): 
+        bnd_type='wrap', bnd_limits=[0,1], **kwargs):
+
+    r"""
+    Advance nt time-steps in time the burger eq for a being a and b 
+    a fix constant or array. Solving two advective terms without operator
+    splitting using a single time-step- and LAX-method by adding the two terms (a+b)
+
+    Requires
+    --------
+    step_adv_burgers
+    cfl_adv_burger
+    numpy.pad for boundaries. 
+
+    Parameters
+    ----------
+    xx : `array`
+        Spatial axis.
+    hh : `array`
+        Function that depends on xx.
+    nt : `int`
+        Number of iterations
+    a : `float` or `array`
+        Either constant, or array which multiply the right hand side of the Burger's eq.
+    b : `float` or `array`
+        Either constant, or array which multiply the right hand side of the Burger's eq.
+    cfl_cut : `float`
+        Constant value to limit dt from cfl_adv_burger.
+        By default 0.98
+    ddx : `lambda function` 
+        Allows to change the space derivative function.
+        By default lambda x,y: deriv_dnw(x, y)
+    bnd_type : `string` 
+        Allows to select the type of boundaries.
+        By default `wrap`
+    bnd_limits : `list(int)` 
+        The number of pixels that will need to be updated with the boundary information.
+        By default [0,1]
+
+    Returns
+    -------
+    t : `array`
+        Time 1D array
+    unnt : `array`
+        Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
+        all the elements of the domain. 
+    """
+
+
+    t = np.zeros(nt)
+    un = np.zeros((len(xx), nt))
+
+    un[:,0] = hh
+    d = len(un)
+
+    for i in range(nt-1): 
+        dt, rhs = step_adv_burgers(xx, hh, (a+b), cfl_cut = cfl_cut ,ddx = ddx)
+
+        un[:,i+1] =  0.5*(np.roll(hh,-1) +  np.roll(hh,1)) + rhs*dt
+        
+        t[i+1] = t[i]+(dt)
+        
+        un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        
+        hh = un[:,i+1]
+
+    return t, un
+
+
+
+
+
+
+
+def osp_Lax_LH_Strang(xx, hh, nt, a, b, cfl_cut = 0.8, 
+        ddx = lambda x,y: nm.deriv_cent(x, y), 
+        bnd_type='wrap', bnd_limits=[1,1], **kwargs):  
     r"""
     Advance nt time-steps in time the burger eq for a being a and b 
     a fix constant or array. Solving two advective terms separately 
@@ -713,6 +942,47 @@ def osp_Lax_LH_Strang(xx, hh, nt, a, b, cfl_cut = 0.98,
         Spatial and time evolution of u^n_j for n = (0,nt), and where j represents
         all the elements of the domain. 
     """
+
+
+    t = np.zeros(nt)
+    un = np.zeros((len(xx), nt))
+
+    un[:,0] = hh
+    d = len(un)
+
+    for i in range(nt-1): 
+        dt1, rhs1 = step_adv_burgers(xx, hh, a, cfl_cut = cfl_cut ,ddx = ddx)
+        dt2, rhs2 = step_adv_burgers(xx, hh, b, cfl_cut = cfl_cut ,ddx = ddx)
+        
+        dt = min(dt1, dt2)
+
+        un1 = 0.5*(np.roll(hh,-1) +  np.roll(hh,1)) + rhs1*dt/2
+        un1 = np.pad(un1[bnd_limits[0]:d- bnd_limits[1]], bnd_limits, bnd_type)
+
+        if i==0:
+            un3, uo, dt_v =  hyman(xx, un1 ,dt, b, cfl_cut=cfl_cut, ddx=ddx,
+                                       bnd_limits=[1,1])
+        else:
+            un3, uo, dt_v =  hyman(xx, un1, dt, b, cfl_cut=cfl_cut, ddx=ddx, bnd_limits=[1,1],
+                                       fold=hh, dtold=dt_old)
+
+        
+        dt4, rhs4 = step_adv_burgers(xx, un3, a, cfl_cut = cfl_cut ,ddx = ddx)
+        un4= 0.5*(np.roll(un3,-1) +  np.roll(un3,1)) + rhs4*dt/2
+        un4 = np.pad(un4[bnd_limits[0]:d- bnd_limits[1]], bnd_limits, bnd_type)
+
+        un[:,i+1] = un4 
+
+        t[i+1] = t[i]+dt
+        
+        un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        
+        hh = un[:,i+1]
+        dt_old = dt
+
+
+
+    return t, un
 
 
 def step_diff_burgers(xx, hh, a, ddx = lambda x,y: deriv_cent(x, y), **kwargs): 
@@ -1038,7 +1308,7 @@ def taui_sts(nu, niter, iiter):
 
 
 
-def evol_sts(xx, hh, nt,  a, cfl_cut = 0.45, 
+def evol_sts(xx, hh, nt,  a, cfl_cut = 0.98, 
         ddx = lambda x,y: deriv_cent(x, y), 
         bnd_type='wrap', bnd_limits=[0,1], nu=0.9, n_sts=10): 
     """
@@ -1093,26 +1363,35 @@ def evol_sts(xx, hh, nt,  a, cfl_cut = 0.45,
     delta_cfl = cfl_cut*np.min(dx**2/(2*np.abs(a)))
 
     
-
+    tmp_u = np.zeros((len(xx), n_sts))
     for i in range(nt-1): 
 
         taui_sum = 0
 
-        rhs = a*ddx(xx,hh)
+        # rhs = a*ddx(xx,hh)
+        # rhs = step_diff_burgers(xx, hh, a, ddx)
+
+        tmp_u[:,0] = un[:,i]
 
         for j in range(n_sts): 
 
             # taui = delta_cfl*taui_sts(nu, n_sts, j)
             # dt += taui
-            taui_sum += taui_sts(nu, n_sts, j)
+            rhs = step_diff_burgers(xx, hh, a, ddx)
+            tmp_u[:,j] = hh + rhs*taui_sts(nu, n_sts, j+1)*delta_cfl
+            taui_sum += taui_sts(nu, n_sts, j+1)*delta_cfl
+            tmp_u[:,j] = np.pad(tmp_u[bnd_limits[0]:d- bnd_limits[1],j], bnd_limits, bnd_type)
+            hh = tmp_u[:,j]
+            
 
-        dt = taui_sum*delta_cfl
+        un[:,i+1] = tmp_u[:,-1]
+        dt = taui_sum#*delta_cfl
 
-        un[:,i+1] = hh + rhs*dt
+        # un[:,i+1] = hh + rhs*dt
 
         t[i+1] = t[i]+dt
-        un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
-        hh = un[:,i+1]
+        # un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
+        # hh = un[:,i+1]
 
     return t, un
 
@@ -1130,7 +1409,7 @@ def evol_sts(xx, hh, nt,  a, cfl_cut = 0.45,
 
 def hyman(xx, f, dth, a, fold=None, dtold=None,
         cfl_cut=0.8, ddx = lambda x,y: deriv_dnw(x, y), 
-        bnd_type='wrap', bnd_limits=[0,1], **kwargs): 
+        bnd_type='wrap', bnd_limits=[1,1], **kwargs): 
 
     dt, u1_temp = step_adv_burgers(xx, f, a, ddx=ddx)
 
