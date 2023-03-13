@@ -964,7 +964,7 @@ def osp_Lax_LH_Strang(xx, hh, nt, a, b, cfl_cut = 0.8,
                                        bnd_limits=[1,1])
         else:
             un3, uo, dt_v =  hyman(xx, un1, dt, b, cfl_cut=cfl_cut, ddx=ddx, bnd_limits=[1,1],
-                                       fold=hh, dtold=dt_old)
+                                       fold=uo, dtold=dt_v)
 
         
         dt4, rhs4 = step_adv_burgers(xx, un3, a, cfl_cut = cfl_cut ,ddx = ddx)
@@ -978,7 +978,6 @@ def osp_Lax_LH_Strang(xx, hh, nt, a, b, cfl_cut = 0.8,
         un[:,i+1] = np.pad(un[bnd_limits[0]:d- bnd_limits[1],i+1], bnd_limits, bnd_type)
         
         hh = un[:,i+1]
-        dt_old = dt
 
 
 
