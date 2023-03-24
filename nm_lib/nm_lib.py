@@ -217,7 +217,7 @@ def evolv_adv_burgers(xx, hh, nt, a, cfl_cut = 0.98,
     
 
 
-def deriv_upw(xx, hh, **kwargs):
+def deriv_upw(xx, hh, axis=0,**kwargs):
     r"""
     returns the upwind 2nd order derivative of hh respect to xx. 
 
@@ -241,13 +241,18 @@ def deriv_upw(xx, hh, **kwargs):
     # u_dev = (hh[:-1] - hh[1:])/(xx[:-1]- xx[1:])
 
     #Roll: used for fixing 4a
-    u_dev = (hh - np.roll(hh,1))/(xx-np.roll(xx,1))
+    #This is used before trying in the HD code
+    # u_dev = (hh - np.roll(hh,1))/(xx-np.roll(xx,1))
+
+    #For the HD code
+    dx = xx[1]-xx[0]
+    u_dev = (hh - np.roll(hh,1, axis=axis))/dx
     
 
     return u_dev
     
 
-def deriv_cent(xx, hh, **kwargs):
+def deriv_cent(xx, hh, axis=0, **kwargs):
     r"""
     returns the centered 2nd derivative of hh respect to xx. 
 
@@ -264,13 +269,14 @@ def deriv_cent(xx, hh, **kwargs):
         The centered 2nd order derivative of hh respect to xx. First 
         and last grid points are ill calculated. 
     """
-    # dx = xx[2:] - xx[:-2]
+    dx = xx[2] - xx[0]
 
     # u_dev = (hh[2:] - hh[:-2])/(2*dx)
 
     #Roll:
-    u_dev = (np.roll(hh,-1) - np.roll(hh,1))/(np.roll(xx,-1) - np.roll(xx, 1))
-
+    u_dev = (np.roll(hh,-1,axis=axis) - np.roll(hh,1,axis=axis))/dx#(np.roll(xx,-1) - np.roll(xx, 1))
+    # print((np.roll(hh,-1,axis=axis) - np.roll(hh,1,axis=axis)).shape)
+    # print((np.roll(xx,-1,axis=axis) - np.roll(xx, 1,axis=axis)).shape)
     return u_dev
 
 
