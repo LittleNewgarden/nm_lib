@@ -282,6 +282,33 @@ def deriv_cent(xx, hh, axis=0, **kwargs):
 
 
 
+def deriv_cent_2D(xx, hh, axis1=0, **kwargs):
+    r"""
+    returns the centered 2nd derivative of hh respect to xx. 
+
+    Parameters
+    ---------- 
+    xx : `array`
+        Spatial axis. 
+    hh : `array`
+        Function that depends on xx. 
+
+    Returns
+    -------
+    `array`
+        The centered 2nd order derivative of hh respect to xx. First 
+        and last grid points are ill calculated. 
+    """
+    dx = xx[2] - xx[0]
+
+    #Roll:
+    u_dev = (np.roll(hh,-1,axis=axis1) - np.roll(hh,1,axis=axis1))/dx#(np.roll(xx,-1) - np.roll(xx, 1))
+
+    return u_dev
+
+
+
+
 
 def evolv_uadv_burgers(xx, hh, nt, cfl_cut = 0.98, 
         ddx = lambda x,y: deriv_dnw(x, y), 
@@ -1469,4 +1496,165 @@ def hyman_pred(f, fold, dfdt, a1, b1, a2, b2):
     f = tempvar
     
     return f, fold, fsav
+
+
+
+def step_cont_1D(xx, rho, u, axis, cfl_cut = 0.98, 
+                    ddx = lambda x,y: nm.deriv_cent(x, y), bnd_limits=[1,1]): 
+   
+    rhs = -ddx(xx,rho*u,axis=axis) 
+    return rhs
+
+
+def step_mom_1D(xx, rho, u, Pg, axis, cfl_cut = 0.98, 
+                    ddx1 = lambda x,y: nm.deriv_cent(x, y), ddx2 = lambda x,y: nm.deriv_cent(x, y), bnd_limits=[1,1]): 
+
+    rhs = -ddx1(xx, rho*u**2 + Pg, axis=axis) 
+
+    return rhs
+
+
+def step_e_1D(xx, e, u, Pg, axis, cfl_cut = 0.98, 
+                    ddx1 = lambda x,y: nm.deriv_cent(x, y), ddx2 = lambda x,y: nm.deriv_cent(x, y), bnd_limits=[1,1]): 
+
+    rhs = -ddx1(xx, u*(e+Pg), axis=axis)
+
+    return rhs
+
+
+
+def evolv_Euler_2D(xx, yy, rho, u, v, energy, Pg, nt, gamma, axis1=0, axis2=1, cfl_cut = 0.28, 
+        ddx = lambda x,y: deriv_cent(x, y),
+        bnd_type='wrap', bnd_limits=[1,1], **kwargs):
+    
+    t = np.zeros(int(nt/100)+1)
+    
+    rho_new = np.zeros((len(xx), len(yy), 1, int(nt/100)+1))
+    mom_new_x = np.zeros((len(xx), len(yy), 1, int(nt/100)+1))
+    mom_new_y = np.zeros((len(xx), len(yy), 1, int(nt/100)+1))
+    e_new = np.zeros((len(xx), len(yy), 1, int(nt/100)+1)) 
+
+    rho_new[:,:,:,0] = rho
+    mom_new_x[:,:,:,0] = rho*u
+    mom_new_y[:,:,:,0] = rho*v
+    e_new[:,:,:,0] = energy
+
+    d = len(rho_new)
+    print("d", d)
+    dx = xx[1]-xx[0]
+    dy = yy[1]-yy[0]
+
+    count = 0
+
+    for j in range(nt-1): 
+
+        if j%100!=0:
+            i = int(j/100) + 1
+        else:
+            i=int(j/100)
+        print("i", i)
+
+        # r.h.s continuity eq.
+        
+        d_rho_u_dx = step_cont_1D(xx, rho_new[:,:,:,i], u, axis = axis1, cfl_cut = cfl_cut ,ddx = ddx)
+        d_rho_v_dy = step_cont_1D(yy,rho_new[:,:,:,i], v, axis=axis2, cfl_cut=cfl_cut, ddx = ddx) 
+        rhs_cont = d_rho_u_dx + d_rho_v_dy
+
+        # r.h.s momentum eq. x-direction and y-direction
+        d_rho_u_v_dy = ddx(yy, rho_new[:,:,:,i]*u*v, axis=axis2)
+        d_rho_u_v_dx = ddx(xx, rho_new[:,:,:,i]*u*v, axis=axis1)
+        rhs_mom_x = step_mom_1D(xx, rho_new[:,:,:,i], u, Pg, axis=axis1, cfl_cut=cfl_cut, ddx1 = ddx, ddx2=ddx) - d_rho_u_v_dy
+        rhs_mom_y = step_mom_1D(yy, rho_new[:,:,:,i], v, Pg, axis=axis2, cfl_cut=cfl_cut, ddx1 = ddx, ddx2=ddx) - d_rho_u_v_dx
+
+        # r.h.s energy equation
+        de_dt_x = step_e_1D(xx, e_new[:,:,:,i], u, Pg, axis=axis1, cfl_cut=cfl_cut, ddx1=ddx, ddx2=ddx)
+        de_dt_y = step_e_1D(yy, e_new[:,:,:,i], v, Pg, axis=axis2, cfl_cut=cfl_cut, ddx1=ddx, ddx2=ddx)
+        rhs_e = de_dt_x + de_dt_y
+
+
+        #Finding smallest time step
+        tot_u = np.sqrt(u**2 + v**2)
+        # print("tot u", tot_u)
+        # dt1 = np.min(np.abs(dx/(u**2 + v**2)**(1/2)))
+        dt1 = np.min(np.abs(dx/tot_u))
+        print("dt1", dt1)
+        # dt1 = np.min(np.abs(dx/u))
+
+        # print("dt1", dt1)
+
+        u_sound = np.sqrt(gamma*Pg/rho_new[:,:,:,i])
+
+        dt2 = np.min(np.abs(dx/u_sound))
+    
+        dt = cfl_cut*min(dt1,dt2)
+        print("dt", dt)
+
+        if (j%100 == 0):
+            # ----------------------LAX-----------------------------------------------------------------------------
+            # rho_new[:,:,:, i+1] = (1/4)*(np.roll(rho_new[:,:,:,i], -1, axis=axis1) + rho_new[:,:,:,i] + np.roll(rho_new[:,:,:,i], 1, axis=axis1)) + (1/4)*(np.roll(rho_new[:,:,:,i], -1, axis=axis2) + rho_new[:,:,:,i] + np.roll(rho_new[:,:,:,i], 1, axis=axis2)) + rhs_cont*dt
+            # mom_new_x[:,:,:, i+1] = (1/4)*(np.roll(mom_new_x[:,:,:,i], -1, axis=axis1) + mom_new_x[:,:,:,i] + np.roll(mom_new_x[:,:,:,i], 1, axis=axis1)) + (1/4)*(np.roll(mom_new_x[:,:,:,i], -1, axis=axis2) + mom_new_x[:,:,:,i] + np.roll(mom_new_x[:,:,:,i], 1, axis=axis2)) + rhs_mom_x*dt
+
+            # mom_new_y[:,:,:, i+1] = (1/4)*(np.roll(mom_new_y[:,:,:,i], -1, axis=axis2) + mom_new_y[:,:,:,i] + np.roll(mom_new_y[:,:,:,i], 1, axis=axis2))+ (1/4)*(np.roll(mom_new_y[:,:,:,i], -1, axis=axis1) + mom_new_y[:,:,:,i] + np.roll(mom_new_y[:,:,:,i], 1, axis=axis1)) + rhs_mom_y*dt
+            # e_new[:,:,:, i+1] = (1/4)*(np.roll(e_new[:,:,:,i], -1, axis=axis1) + e_new[:,:,:,i] + np.roll(e_new[:,:,:,i], 1,axis=axis1)) + (1/4)*(np.roll(e_new[:,:,:,i], -1, axis=axis2) + e_new[:,:,:,i] + np.roll(e_new[:,:,:,i], 1, axis=axis2))  + rhs_e*dt
+
+            rho_new[:,:,:, i+1] = 0.25*(np.roll(rho_new[:,:,:,i], -1, axis=axis1) + np.roll(rho_new[:,:,:,i], 1, axis=axis1)) + 0.25*(np.roll(rho_new[:,:,:,i], -1, axis=axis2) + np.roll(rho_new[:,:,:,i], 1, axis=axis2)) + rhs_cont*dt
+            mom_new_x[:,:,:, i+1] = 0.25*(np.roll(mom_new_x[:,:,:,i], -1, axis=axis1) + np.roll(mom_new_x[:,:,:,i], 1, axis=axis1)) + 0.25*(np.roll(mom_new_x[:,:,:,i], -1, axis=axis2) + np.roll(mom_new_x[:,:,:,i], 1, axis=axis2))+ rhs_mom_x*dt
+            mom_new_y[:,:,:, i+1] = 0.25*(np.roll(mom_new_y[:,:,:,i], -1, axis=axis1) + np.roll(mom_new_y[:,:,:,i], 1, axis=axis1)) + 0.25*(np.roll(mom_new_y[:,:,:,i], -1, axis=axis2) + np.roll(mom_new_y[:,:,:,i], 1, axis=axis2)) + rhs_mom_y*dt
+            e_new[:,:,:, i+1] = 0.25*(np.roll(e_new[:,:,:,i], -1, axis=axis1) + np.roll(e_new[:,:,:,i], 1, axis=axis1)) + 0.25*(np.roll(e_new[:,:,:,i], -1, axis=axis2) + np.roll(e_new[:,:,:,i], 1, axis=axis2)) + rhs_e*dt
+        
+
+            t[i+1] = t[i]+dt
+
+            u = mom_new_x[:,:,:,i+1]/rho_new[:,:,:,i+1]  
+            v = mom_new_y[:,:,:,i+1]/rho_new[:,:,:,i+1]
+
+            # Updating the pressure by subtracting the kinetic energy from the total energy
+            Pg = (e_new[:,:,:,i+1] - 0.5*rho_new[:,:,:,i+1]*u**2 -  0.5*rho_new[:,:,:,i+1]*v**2)*(gamma -1)
+        else: 
+            # rho_new[:,:,:, i] = (1/4)*(np.roll(rho_new[:,:,:,i], -1, axis=axis1) + rho_new[:,:,:,i] + np.roll(rho_new[:,:,:,i], 1, axis=axis1)) + (1/4)*(np.roll(rho_new[:,:,:,i], -1, axis=axis2) + rho_new[:,:,:,i] + np.roll(rho_new[:,:,:,i], 1, axis=axis2)) + rhs_cont*dt
+            # mom_new_x[:,:,:, i] = (1/4)*(np.roll(mom_new_x[:,:,:,i], -1, axis=axis1) + mom_new_x[:,:,:,i] + np.roll(mom_new_x[:,:,:,i], 1, axis=axis1)) + (1/4)*(np.roll(mom_new_x[:,:,:,i], -1, axis=axis2) + mom_new_x[:,:,:,i] + np.roll(mom_new_x[:,:,:,i], 1, axis=axis2)) + rhs_mom_x*dt
+
+            # mom_new_y[:,:,:, i] = (1/4)*(np.roll(mom_new_y[:,:,:,i], -1, axis=axis2) + mom_new_y[:,:,:,i] + np.roll(mom_new_y[:,:,:,i], 1, axis=axis2))+ (1/4)*(np.roll(mom_new_y[:,:,:,i], -1, axis=axis1) + mom_new_y[:,:,:,i] + np.roll(mom_new_y[:,:,:,i], 1, axis=axis1)) + rhs_mom_y*dt
+            # e_new[:,:,:, i] = (1/4)*(np.roll(e_new[:,:,:,i], -1, axis=axis1) + e_new[:,:,:,i] + np.roll(e_new[:,:,:,i], 1,axis=axis1)) + (1/4)*(np.roll(e_new[:,:,:,i], -1, axis=axis2) + e_new[:,:,:,i] + np.roll(e_new[:,:,:,i], 1, axis=axis2))  + rhs_e*dt
+
+            rho_new[:,:,:, i] = 0.25*(np.roll(rho_new[:,:,:,i], -1, axis=axis1) + np.roll(rho_new[:,:,:,i], 1, axis=axis1)) + 0.25*(np.roll(rho_new[:,:,:,i], -1, axis=axis2) + np.roll(rho_new[:,:,:,i], 1, axis=axis2)) + rhs_cont*dt
+            mom_new_x[:,:,:, i] = 0.25*(np.roll(mom_new_x[:,:,:,i], -1, axis=axis1) + np.roll(mom_new_x[:,:,:,i], 1, axis=axis1)) + 0.25*(np.roll(mom_new_x[:,:,:,i], -1, axis=axis2) + np.roll(mom_new_x[:,:,:,i], 1, axis=axis2))+ rhs_mom_x*dt
+            mom_new_y[:,:,:, i] = 0.25*(np.roll(mom_new_y[:,:,:,i], -1, axis=axis1) + np.roll(mom_new_y[:,:,:,i], 1, axis=axis1)) + 0.25*(np.roll(mom_new_y[:,:,:,i], -1, axis=axis2) + np.roll(mom_new_y[:,:,:,i], 1, axis=axis2)) + rhs_mom_y*dt
+            e_new[:,:,:, i] = 0.25*(np.roll(e_new[:,:,:,i], -1, axis=axis1) + np.roll(e_new[:,:,:,i], 1, axis=axis1)) + 0.25*(np.roll(e_new[:,:,:,i], -1, axis=axis2) + np.roll(e_new[:,:,:,i], 1, axis=axis2)) + rhs_e*dt
+        
+            
+            t[i] = t[i]+dt
+
+            u = mom_new_x[:,:,:,i]/rho_new[:,:,:,i]  
+            v = mom_new_y[:,:,:,i]/rho_new[:,:,:,i]
+
+            # Updating the pressure by subtracting the kinetic energy from the total energy
+            Pg = (e_new[:,:,:,i] - 0.5*rho_new[:,:,:,i]*u**2 -  0.5*rho_new[:,:,:,i]*v**2)*(gamma -1)
+
+
+        # ----------------------More diffusive LAX with axis in numpy.roll--------------------------------------
+        # rho_new[:,:,:, i+1] = (1/6)*(np.roll(rho_new[:,:,:,i], -1, axis=axis1) + rho_new[:,:,:,i] + np.roll(rho_new[:,:,:,i], 1, axis=axis1)) + (1/6)*(np.roll(rho_new[:,:,:,i], -1, axis=axis2) + rho_new[:,:,:,i] + np.roll(rho_new[:,:,:,i], 1, axis=axis2)) + rhs_cont*dt
+        # mom_new_x[:,:,:, i+1] = (1/6)*(np.roll(mom_new_x[:,:,:,i], -1, axis=axis1) + mom_new_x[:,:,:,i] + np.roll(mom_new_x[:,:,:,i], 1, axis=axis1)) + (1/6)*(np.roll(mom_new_x[:,:,:,i], -1, axis=axis2) + mom_new_x[:,:,:,i] + np.roll(mom_new_x[:,:,:,i], 1, axis=axis2)) + rhs_mom_x*dt
+
+        # mom_new_y[:,:,:, i+1] = (1/6)*(np.roll(mom_new_y[:,:,:,i], -1, axis=axis2) + mom_new_y[:,:,:,i] + np.roll(mom_new_y[:,:,:,i], 1, axis=axis2))+ (1/6)*(np.roll(mom_new_y[:,:,:,i], -1, axis=axis1) + mom_new_y[:,:,:,i] + np.roll(mom_new_y[:,:,:,i], 1, axis=axis1)) + rhs_mom_y*dt
+        # e_new[:,:,:, i+1] = (1/6)*(np.roll(e_new[:,:,:,i], -1, axis=axis1) + e_new[:,:,:,i] + np.roll(e_new[:,:,:,i], 1,axis=axis1)) + (1/6)*(np.roll(e_new[:,:,:,i], -1, axis=axis2) + e_new[:,:,:,i] + np.roll(e_new[:,:,:,i], 1, axis=axis2))  + rhs_e*dt
+
+            # t[i+1] = t[i]+dt
+
+            # u = mom_new_x[:,:,:,i+1]/rho_new[:,:,:,i+1]  
+            # v = mom_new_y[:,:,:,i+1]/rho_new[:,:,:,i+1]
+
+            # # Updating the pressure by subtracting the kinetic energy from the total energy
+            # Pg = (e_new[:,:,:,i+1] - 0.5*rho_new[:,:,:,i+1]*u**2 -  0.5*rho_new[:,:,:,i+1]*v**2)*(gamma -1)
+
+        count += 1
+
+        print(f"Process {count}/{nt} complete")
+
+    return t, rho_new, mom_new_x, mom_new_y, e_new 
+
+
+
+
+
 
